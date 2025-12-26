@@ -109,8 +109,7 @@ const Navbar = () => {
               Chat Ai
             </Link>
           )}
-
-        {currentUser && isAdmin && (
+          {currentUser && isAdmin && (
             <Link
               to="/admin"
               className="bg-red-600 text-white px-4 py-1 rounded-md hover:bg-red-700 transition font-semibold"
@@ -118,6 +117,8 @@ const Navbar = () => {
               Admin Panel
             </Link>
           )}
+
+      
           {/* --- TOMBOL LOGIN / LOGOUT --- */}
           {currentUser ? (
             <button
