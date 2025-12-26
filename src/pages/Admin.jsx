@@ -45,7 +45,7 @@ const Admin = () => {
   const dietCategories = ["Low Carb", "Keto", "Gluten Free", "High Fiber"];
   const methodCategories = ["No-Bake", "Microwave Ready", "Raw"];
 
-  // --- FORM STATE (DISAMAKAN DENGAN PROFILE.JSX) ---
+  // --- FORM STATE ---
   const [newRecipe, setNewRecipe] = useState({
     title: "", category: "Low Carb", tags: [], calories: "", 
     servings: "", desc: "", image: "", 
@@ -59,7 +59,6 @@ const Admin = () => {
         try {
           const userDoc = await getDoc(doc(db, "users", user.uid));
           if (userDoc.exists() && userDoc.data().role === "admin") {
-            // Ambil Resep
             const q = query(collection(db, "recipes")); 
             const unsubRecipes = onSnapshot(q, (snapshot) => {
               const data = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
@@ -70,7 +69,6 @@ const Admin = () => {
               });
               setRecipes(data);
             });
-            // Ambil Users
             const usersSnapshot = await getDocs(collection(db, "users"));
             const usersData = usersSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             setUsers(usersData);
@@ -92,45 +90,38 @@ const Admin = () => {
     return () => unsubscribeAuth();
   }, [navigate]);
 
-  // --- 2. LOGIC TAMBAH RESEP (ADAPTED FROM PROFILE) ---
+  // --- 2. LOGIC TAMBAH RESEP ---
   const handleUploadChange = (e) => setNewRecipe({ ...newRecipe, [e.target.name]: e.target.value });
-  
   const handleTagChange = (tag) => {
     const currentTags = newRecipe.tags;
     setNewRecipe({ ...newRecipe, tags: currentTags.includes(tag) ? currentTags.filter(t => t !== tag) : [...currentTags, tag] });
   };
-
   const handleArrayChange = (idx, val, type) => {
     const newArr = [...newRecipe[type]];
     newArr[idx] = val;
     setNewRecipe({ ...newRecipe, [type]: newArr });
   };
-
   const addArrayItem = (type) => setNewRecipe({ ...newRecipe, [type]: [...newRecipe[type], ""] });
-  
   const removeArrayItem = (idx, type) => {
     const newArr = [...newRecipe[type]];
     newArr.splice(idx, 1);
     setNewRecipe({ ...newRecipe, [type]: newArr });
   };
-
   const handleAddRecipeSubmit = async (e) => {
     e.preventDefault();
     if (!newRecipe.title || !newRecipe.desc) return alert("Isi data minimal!");
-    
     try {
       await addDoc(collection(db, "recipes"), {
         ...newRecipe,
-        // Bersihkan array kosong
         ingredients: newRecipe.ingredients.filter(i => i.trim() !== ""),
         instructions: newRecipe.instructions.filter(i => i.trim() !== ""),
-        status: "approved", // Admin upload otomatis Approved
+        status: "approved", 
         views: 0, likes: 0, shares: 0, rating: 0,
         uploadedBy: "Admin", 
         createdAt: serverTimestamp(),
         uploadedAt: new Date()
       });
-      alert("Resep berhasil ditambahkan & langsung tayang!");
+      alert("Resep berhasil ditambahkan!");
       setNewRecipe({ title: "", category: "Low Carb", tags: [], calories: "", servings: "", desc: "", image: "", ingredients: [""], instructions: [""] });
       setActiveTab('recipes');
     } catch (error) {
@@ -149,27 +140,17 @@ const Admin = () => {
     if (lower.includes("high fiber")) return "bg-green-100 text-green-700";
     return "bg-gray-100 text-gray-600";
   };
-
   const filteredRecipes = recipes.filter(r => selectedCategory === "Semua" ? true : r.category?.toLowerCase() === selectedCategory.toLowerCase());
   
-  // LOGIC APPROVE / REJECT / DELETE
-  const handleApprove = async (id, title) => {
-    if (window.confirm(`Terbitkan "${title}"?`)) {
-        await updateDoc(doc(db, "recipes", id), { status: "approved" });
-        setSelectedRecipe(null); 
-    }
-  };
-  const handleReject = async (id, title) => {
-    if (window.confirm(`Tolak "${title}"?`)) {
-        await updateDoc(doc(db, "recipes", id), { status: "rejected" });
-        setSelectedRecipe(null);
-    }
-  };
+  // --- ACTIONS ---
+  const handleApprove = async (id, title) => { if (window.confirm(`Terbitkan "${title}"?`)) { await updateDoc(doc(db, "recipes", id), { status: "approved" }); setSelectedRecipe(null); }};
+  const handleReject = async (id, title) => { if (window.confirm(`Tolak "${title}"?`)) { await updateDoc(doc(db, "recipes", id), { status: "rejected" }); setSelectedRecipe(null); }};
   const handleDelete = async (id) => window.confirm("Hapus permanen?") && deleteDoc(doc(db, "recipes", id));
   const handleLogout = async () => { await signOut(auth); navigate("/login"); };
 
-  // --- STATISTIK ---
+  // --- STATISTIK CALCULATION ---
   const pendingList = recipes.filter(r => r.status === "pending");
+  const topRecipes = [...recipes].sort((a, b) => (b.views || 0) - (a.views || 0)).slice(0, 5);
   const stats = {
     totalViews: recipes.reduce((acc, curr) => acc + (Number(curr.views) || 0), 0),
     totalUsers: users.length,
@@ -195,6 +176,8 @@ const Admin = () => {
           <SidebarItem icon={<Icons.Recipe/>} label="Kelola Resep" active={activeTab === 'recipes'} onClick={() => setActiveTab('recipes')} badge={stats.pendingRecipes > 0 ? stats.pendingRecipes : null} />
           <SidebarItem icon={<Icons.Add/>} label="Tambah Resep Baru" active={activeTab === 'add'} onClick={() => setActiveTab('add')} />
           <SidebarItem icon={<Icons.Users/>} label="Pengguna" active={activeTab === 'users'} onClick={() => setActiveTab('users')} />
+          {/* --- MENU STATISTIK DIKEMBALIKAN --- */}
+          <SidebarItem icon={<Icons.Stats/>} label="Statistik & Analitik" active={activeTab === 'stats'} onClick={() => setActiveTab('stats')} />
         </nav>
         <div className="p-4 border-t border-gray-100">
           <button onClick={handleLogout} className="flex items-center gap-3 text-gray-500 hover:text-red-600 w-full px-4 py-2 transition">Logout</button>
@@ -206,7 +189,7 @@ const Admin = () => {
         <header className="flex justify-between items-center mb-8">
           <div>
             <h2 className="text-3xl font-bold text-[#4B110D]">
-              {activeTab === 'dashboard' ? 'Dashboard Overview' : activeTab === 'recipes' ? 'Kelola Resep' : activeTab === 'add' ? 'Tambah Resep Baru' : 'Kelola Pengguna'}
+              {activeTab === 'dashboard' ? 'Dashboard Overview' : activeTab === 'recipes' ? 'Kelola Resep' : activeTab === 'add' ? 'Tambah Resep Baru' : activeTab === 'stats' ? 'Statistik & Analitik' : 'Kelola Pengguna'}
             </h2>
             <p className="text-gray-500">Selamat datang kembali, Administrator!</p>
           </div>
@@ -289,15 +272,13 @@ const Admin = () => {
            </div>
         )}
 
-        {/* --- FORM TAMBAH RESEP (UPDATED: STYLE PROFILE.JSX, NO POPUP) --- */}
+        {/* --- FORM TAMBAH RESEP (UPDATED: STYLE PROFILE.JSX) --- */}
         {activeTab === 'add' && (
           <div className="bg-white rounded-[30px] shadow-sm border border-gray-100 p-8 max-w-4xl">
             <h3 className="text-2xl font-black text-[#4B110D] mb-6">Buat Resep Baru (Admin)</h3>
             <form onSubmit={handleAddRecipeSubmit} className="space-y-6">
-              
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div><label className="label-text">Judul Resep</label><input type="text" name="title" required value={newRecipe.title} onChange={handleUploadChange} className="input-field" placeholder="Cth: Keto Avocado" /></div>
-                
                 <div>
                   <label className="label-text">Kategori</label>
                   <select name="category" value={newRecipe.category} onChange={handleUploadChange} className="input-field bg-white">
@@ -305,9 +286,7 @@ const Admin = () => {
                   </select>
                 </div>
               </div>
-
               <div><label className="label-text">URL Gambar</label><input type="text" name="image" required value={newRecipe.image} onChange={handleUploadChange} className="input-field" placeholder="https://..." /></div>
-
               <div>
                 <label className="label-text">Tags (Cara Buat)</label>
                 <div className="flex flex-wrap gap-2">
@@ -316,15 +295,11 @@ const Admin = () => {
                   ))}
                 </div>
               </div>
-
               <div className="grid grid-cols-2 gap-6">
                 <div><label className="label-text">Kalori</label><input type="number" name="calories" value={newRecipe.calories} onChange={handleUploadChange} className="input-field" placeholder="100" /></div>
                 <div><label className="label-text">Porsi</label><input type="text" name="servings" value={newRecipe.servings} onChange={handleUploadChange} className="input-field" placeholder="1 Porsi" /></div>
               </div>
-
               <div><label className="label-text">Deskripsi</label><textarea name="desc" value={newRecipe.desc} onChange={handleUploadChange} className="input-field h-20 resize-none" placeholder="Ceritakan sedikit..."></textarea></div>
-
-              {/* Dynamic Ingredients */}
               <div>
                 <label className="label-text">Bahan-bahan</label>
                 {newRecipe.ingredients.map((ing, idx) => (
@@ -335,8 +310,6 @@ const Admin = () => {
                 ))}
                 <button type="button" onClick={() => addArrayItem('ingredients')} className="text-xs font-bold text-[#A02E2E] hover:underline">+ Tambah Bahan</button>
               </div>
-
-              {/* Dynamic Instructions */}
               <div>
                 <label className="label-text">Instruksi</label>
                 {newRecipe.instructions.map((ins, idx) => (
@@ -348,7 +321,6 @@ const Admin = () => {
                 ))}
                 <button type="button" onClick={() => addArrayItem('instructions')} className="text-xs font-bold text-[#A02E2E] hover:underline">+ Tambah Langkah</button>
               </div>
-
               <div className="flex justify-end gap-4 pt-4 border-t border-gray-100">
                 <button type="button" onClick={() => setActiveTab('recipes')} className="px-6 py-2 border rounded-xl font-bold text-gray-500 hover:bg-gray-50">Batal</button>
                 <button type="submit" className="px-8 py-3 bg-[#A02E2E] text-white font-bold rounded-xl shadow-lg hover:bg-red-800 transition-all">Publikasikan</button>
@@ -380,9 +352,71 @@ const Admin = () => {
             </div>
           </div>
         )}
+
+        {/* --- STATS TAB (DIKEMBALIKAN!) --- */}
+        {activeTab === 'stats' && (
+          <div className="space-y-8">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                <StatCardNew label="Total Views" value={`${(stats.totalViews / 1000).toFixed(1)}k`} sub="Total Views" growth="+35%" icon={<Icons.Stats/>} />
+                <StatCardNew label="Pengguna Baru" value={stats.totalUsers} sub="Pengguna Baru" growth="+12%" icon={<Icons.Users/>} />
+                <StatCardNew label="Total Likes" value={stats.totalLikes} sub="Total Likes" growth="+28%" icon={<Icons.Heart/>} />
+                <StatCardNew label="Total Shares" value={stats.totalShares} sub="Total Shares" growth="+22%" icon={<Icons.Share/>} />
+              </div>
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                {/* GRAFIK LINE CHART (SVG) */}
+                <div className="lg:col-span-2 bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
+                    <h4 className="font-bold text-[#4B110D] mb-6">Tren Views 2025</h4>
+                    <div className="h-64 w-full flex items-end justify-between px-2 gap-2 relative">
+                      <div className="absolute inset-0 flex flex-col justify-between text-xs text-gray-300 pointer-events-none">
+                          {[30, 20, 10, 0].map(n => <div key={n} className="border-b border-gray-100 w-full h-full flex items-end"><span>{n}k</span></div>)}
+                      </div>
+                      <svg className="absolute bottom-0 left-0 w-full h-full p-4 overflow-visible" viewBox="0 0 500 200" preserveAspectRatio="none">
+                          <defs><linearGradient id="gradient" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stopColor="#960C14" stopOpacity="0.2" /><stop offset="100%" stopColor="#960C14" stopOpacity="0" /></linearGradient></defs>
+                          <path d="M0,200 Q100,150 200,180 T400,50 T500,10" fill="url(#gradient)" stroke="none" />
+                          <path d="M0,200 Q100,150 200,180 T400,50 T500,10" fill="none" stroke="#960C14" strokeWidth="3" />
+                          <circle cx="0" cy="200" r="3" fill="#960C14" /><circle cx="200" cy="180" r="3" fill="#960C14" /><circle cx="400" cy="50" r="3" fill="#960C14" /><circle cx="500" cy="10" r="3" fill="#960C14" />
+                      </svg>
+                    </div>
+                    <div className="flex justify-between text-xs text-gray-400 mt-4 px-2"><span>Jan</span><span>Feb</span><span>Mar</span><span>Apr</span><span>May</span><span>Jun</span><span>Jul</span><span>Aug</span><span>Sep</span><span>Oct</span><span>Nov</span><span>Dec</span></div>
+                </div>
+                {/* GRAFIK DONUT (CSS) */}
+                <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm flex flex-col items-center">
+                    <h4 className="font-bold text-[#4B110D] mb-6 w-full text-left">Distribusi Kategori</h4>
+                    <div className="relative w-48 h-48 rounded-full mb-6" style={{ background: `conic-gradient(#960C14 0% 30%, #E27E75 30% 50%, #FDBA74 50% 70%, #86EFAC 70% 90%, #93C5FD 90% 100%)` }}><div className="absolute inset-0 m-auto w-24 h-24 bg-white rounded-full"></div></div>
+                    <div className="w-full grid grid-cols-2 gap-y-2 text-xs text-gray-600">
+                      <div className="flex items-center gap-2"><span className="w-3 h-3 bg-[#960C14] rounded-sm"></span> Kue (30%)</div>
+                      <div className="flex items-center gap-2"><span className="w-3 h-3 bg-[#E27E75] rounded-sm"></span> Puding (20%)</div>
+                      <div className="flex items-center gap-2"><span className="w-3 h-3 bg-[#FDBA74] rounded-sm"></span> Es Krim (20%)</div>
+                      <div className="flex items-center gap-2"><span className="w-3 h-3 bg-[#86EFAC] rounded-sm"></span> Cake (20%)</div>
+                    </div>
+                </div>
+              </div>
+              {/* TOP 5 RECIPES */}
+              <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+                <div className="flex justify-between items-center mb-6"><h3 className="font-bold text-lg text-[#4B110D]">Top 5 Resep Populer</h3></div>
+                <div className="overflow-x-auto">
+                    <table className="w-full text-left">
+                      <thead className="text-gray-400 text-xs font-semibold border-b border-gray-100"><tr><th className="pb-3 pl-2">Rank</th><th className="pb-3">Judul Resep</th><th className="pb-3">Kategori</th><th className="pb-3 text-right">Views</th><th className="pb-3 text-right">Likes</th><th className="pb-3 text-right">Shares</th></tr></thead>
+                      <tbody className="text-sm">
+                          {topRecipes.map((recipe, index) => (
+                            <tr key={recipe.id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50">
+                                <td className="py-4 pl-2"><div className="w-6 h-6 rounded-full bg-[#960C14] text-white flex items-center justify-center text-xs font-bold">{index + 1}</div></td>
+                                <td className="py-4 font-bold text-[#4B110D]">{recipe.title}</td>
+                                <td className="py-4 text-gray-500">{recipe.category}</td>
+                                <td className="py-4 text-right font-bold text-gray-700">{recipe.views || 0}</td>
+                                <td className="py-4 text-right text-gray-500">{recipe.likes || 0}</td>
+                                <td className="py-4 text-right text-gray-500">{recipe.shares || 0}</td>
+                            </tr>
+                          ))}
+                      </tbody>
+                    </table>
+                </div>
+              </div>
+          </div>
+        )}
       </main>
 
-      {/* --- MODAL DETAIL / PREVIEW (Tetap popup untuk view detail) --- */}
+      {/* --- MODAL DETAIL / PREVIEW --- */}
       {selectedRecipe && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto relative">
@@ -446,8 +480,8 @@ const Admin = () => {
           </div>
         </div>
       )}
-
-      {/* STYLE CSS KHUSUS ADMIN (SAMA DENGAN PROFILE) */}
+      
+      {/* CSS untuk Input Form Profile */}
       <style>{` .input-field { width: 100%; padding: 12px; border-radius: 12px; border: 1px solid #FFDADA; outline: none; transition: all; font-size: 14px; background: #fff; } .input-field:focus { border-color: #A02E2E; ring: 2px solid #FFE4E4; } .label-text { display: block; font-size: 10px; font-weight: 800; color: #A02E2E; text-transform: uppercase; margin-bottom: 6px; letter-spacing: 0.05em; } `}</style>
     </div>
   );
@@ -456,6 +490,7 @@ const Admin = () => {
 // --- SUB-COMPONENTS ---
 const SidebarItem = ({ icon, label, active, onClick, badge }) => (<button onClick={onClick} className={`flex items-center justify-between w-full px-4 py-3 rounded-xl transition font-medium ${active ? "bg-[#960C14] text-white shadow-md" : "text-gray-600 hover:bg-pink-50 hover:text-[#960C14]"}`}><div className="flex items-center gap-3">{icon} <span>{label}</span></div>{badge && <span className="bg-red-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm animate-pulse">{badge}</span>}</button>);
 const StatCard = ({ label, value, color, icon }) => (<div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex items-center gap-4"><div className={`w-12 h-12 rounded-full flex items-center justify-center ${color}`}>{icon}</div><div><p className="text-gray-500 text-sm">{label}</p><h4 className="text-2xl font-bold text-[#4B110D]">{value}</h4></div></div>);
+const StatCardNew = ({ label, value, sub, growth, icon }) => (<div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 relative overflow-hidden"><div className="flex justify-between items-start mb-4"><div className={`w-10 h-10 rounded-full flex items-center justify-center bg-red-50 text-[#960C14]`}>{icon}</div><span className="text-xs font-bold text-green-500 bg-green-50 px-2 py-1 rounded-full">{growth}</span></div><h3 className="text-3xl font-bold text-[#4B110D] mb-1">{value}</h3><p className="text-xs text-gray-400">{sub}</p></div>);
 const RecipeTable = ({ data, onView, handleApprove, handleReject, handleDelete, getCategoryStyle, fullView }) => (
   <div className="overflow-x-auto">
     <table className="w-full text-left border-collapse">
