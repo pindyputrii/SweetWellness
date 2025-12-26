@@ -15,7 +15,7 @@ import {
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import { useNavigate } from "react-router-dom";
 
-// --- IKON SVG (Sama seperti sebelumnya) ---
+// --- IKON SVG ---
 const Icons = {
   Dashboard: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"></path></svg>,
   Recipe: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path></svg>,
@@ -42,9 +42,14 @@ const Admin = () => {
   const [selectedRecipe, setSelectedRecipe] = useState(null); 
   const navigate = useNavigate();
 
-  // --- PERBAIKAN: Default category disesuaikan dengan 4 pilihan baru ---
+  const dietCategories = ["Low Carb", "Keto", "Gluten Free", "High Fiber"];
+  const methodCategories = ["No-Bake", "Microwave Ready", "Raw"];
+
+  // --- FORM STATE (DISAMAKAN DENGAN PROFILE.JSX) ---
   const [newRecipe, setNewRecipe] = useState({
-    title: "", desc: "", category: "Keto", calories: "", image: "", ingredients: "", instructions: ""
+    title: "", category: "Low Carb", tags: [], calories: "", 
+    servings: "", desc: "", image: "", 
+    ingredients: [""], instructions: [""] 
   });
 
   // --- 1. DATA FETCHING ---
@@ -54,6 +59,7 @@ const Admin = () => {
         try {
           const userDoc = await getDoc(doc(db, "users", user.uid));
           if (userDoc.exists() && userDoc.data().role === "admin") {
+            // Ambil Resep
             const q = query(collection(db, "recipes")); 
             const unsubRecipes = onSnapshot(q, (snapshot) => {
               const data = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
@@ -64,6 +70,7 @@ const Admin = () => {
               });
               setRecipes(data);
             });
+            // Ambil Users
             const usersSnapshot = await getDocs(collection(db, "users"));
             const usersData = usersSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             setUsers(usersData);
@@ -85,18 +92,46 @@ const Admin = () => {
     return () => unsubscribeAuth();
   }, [navigate]);
 
-  // --- 2. LOGIC TAMBAH RESEP ---
+  // --- 2. LOGIC TAMBAH RESEP (ADAPTED FROM PROFILE) ---
+  const handleUploadChange = (e) => setNewRecipe({ ...newRecipe, [e.target.name]: e.target.value });
+  
+  const handleTagChange = (tag) => {
+    const currentTags = newRecipe.tags;
+    setNewRecipe({ ...newRecipe, tags: currentTags.includes(tag) ? currentTags.filter(t => t !== tag) : [...currentTags, tag] });
+  };
+
+  const handleArrayChange = (idx, val, type) => {
+    const newArr = [...newRecipe[type]];
+    newArr[idx] = val;
+    setNewRecipe({ ...newRecipe, [type]: newArr });
+  };
+
+  const addArrayItem = (type) => setNewRecipe({ ...newRecipe, [type]: [...newRecipe[type], ""] });
+  
+  const removeArrayItem = (idx, type) => {
+    const newArr = [...newRecipe[type]];
+    newArr.splice(idx, 1);
+    setNewRecipe({ ...newRecipe, [type]: newArr });
+  };
+
   const handleAddRecipeSubmit = async (e) => {
     e.preventDefault();
+    if (!newRecipe.title || !newRecipe.desc) return alert("Isi data minimal!");
+    
     try {
-      if(!newRecipe.title || !newRecipe.desc) return alert("Isi data minimal!");
       await addDoc(collection(db, "recipes"), {
         ...newRecipe,
-        status: "approved", // Admin upload otomatis approved
-        views: 0, likes: 0, shares: 0, uploadedBy: "Admin", createdAt: serverTimestamp()
+        // Bersihkan array kosong
+        ingredients: newRecipe.ingredients.filter(i => i.trim() !== ""),
+        instructions: newRecipe.instructions.filter(i => i.trim() !== ""),
+        status: "approved", // Admin upload otomatis Approved
+        views: 0, likes: 0, shares: 0, rating: 0,
+        uploadedBy: "Admin", 
+        createdAt: serverTimestamp(),
+        uploadedAt: new Date()
       });
-      alert("Resep berhasil ditambahkan!");
-      setNewRecipe({ title: "", desc: "", category: "Keto", calories: "", image: "", ingredients: "", instructions: "" });
+      alert("Resep berhasil ditambahkan & langsung tayang!");
+      setNewRecipe({ title: "", category: "Low Carb", tags: [], calories: "", servings: "", desc: "", image: "", ingredients: [""], instructions: [""] });
       setActiveTab('recipes');
     } catch (error) {
       console.error("Error adding recipe:", error);
@@ -104,38 +139,32 @@ const Admin = () => {
     }
   };
 
-  // --- HELPERS (PERBAIKAN KATEGORI) ---
+  // --- HELPERS ---
   const getCategoryStyle = (cat) => {
     if (!cat) return "bg-gray-100 text-gray-500";
     const lower = cat.toLowerCase();
-    
-    // Perbaikan warna sesuai 4 kategori baru
     if (lower.includes("keto")) return "bg-red-100 text-red-700";
     if (lower.includes("gluten free")) return "bg-yellow-100 text-yellow-700";
     if (lower.includes("low carb")) return "bg-purple-100 text-purple-700";
     if (lower.includes("high fiber")) return "bg-green-100 text-green-700";
-    
     return "bg-gray-100 text-gray-600";
   };
 
   const filteredRecipes = recipes.filter(r => selectedCategory === "Semua" ? true : r.category?.toLowerCase() === selectedCategory.toLowerCase());
   
-  // LOGIC APPROVE / REJECT
+  // LOGIC APPROVE / REJECT / DELETE
   const handleApprove = async (id, title) => {
     if (window.confirm(`Terbitkan "${title}"?`)) {
         await updateDoc(doc(db, "recipes", id), { status: "approved" });
         setSelectedRecipe(null); 
     }
   };
-  
   const handleReject = async (id, title) => {
     if (window.confirm(`Tolak "${title}"?`)) {
-        // Status diubah menjadi rejected
         await updateDoc(doc(db, "recipes", id), { status: "rejected" });
         setSelectedRecipe(null);
     }
   };
-  
   const handleDelete = async (id) => window.confirm("Hapus permanen?") && deleteDoc(doc(db, "recipes", id));
   const handleLogout = async () => { await signOut(auth); navigate("/login"); };
 
@@ -149,7 +178,6 @@ const Admin = () => {
     activeRecipes: recipes.filter(r => r.status === "approved").length,
     pendingRecipes: pendingList.length
   };
-  const topRecipes = [...recipes].sort((a, b) => (b.views || 0) - (a.views || 0)).slice(0, 5);
 
   if (loading) return <div className="min-h-screen flex justify-center items-center bg-[#FFF5F5] text-[#960C14] font-bold">Loading Admin Panel...</div>;
 
@@ -238,7 +266,6 @@ const Admin = () => {
         {activeTab === 'recipes' && (
            <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden p-6">
              <div className="flex gap-2 mb-6">
-                {/* --- PERBAIKAN: Filter Dropdown Kategori --- */}
                 <select value={selectedCategory} onChange={(e) => setSelectedCategory(e.target.value)} className="border rounded-lg px-3 py-2 bg-gray-50 text-sm">
                   <option value="Semua">Semua Kategori</option>
                   <option value="Keto">Keto</option>
@@ -262,33 +289,70 @@ const Admin = () => {
            </div>
         )}
 
+        {/* --- FORM TAMBAH RESEP (UPDATED: STYLE PROFILE.JSX, NO POPUP) --- */}
         {activeTab === 'add' && (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-8 max-w-4xl">
-            <h3 className="text-xl font-bold text-[#4B110D] mb-6">Form Tambah Resep Admin</h3>
+          <div className="bg-white rounded-[30px] shadow-sm border border-gray-100 p-8 max-w-4xl">
+            <h3 className="text-2xl font-black text-[#4B110D] mb-6">Buat Resep Baru (Admin)</h3>
             <form onSubmit={handleAddRecipeSubmit} className="space-y-6">
+              
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div><label className="block text-sm font-medium mb-1">Judul</label><input type="text" className="w-full border rounded-lg p-3" value={newRecipe.title} onChange={e => setNewRecipe({...newRecipe, title: e.target.value})} required /></div>
+                <div><label className="label-text">Judul Resep</label><input type="text" name="title" required value={newRecipe.title} onChange={handleUploadChange} className="input-field" placeholder="Cth: Keto Avocado" /></div>
                 
-                {/* --- PERBAIKAN: Input Select Kategori --- */}
                 <div>
-                  <label className="block text-sm font-medium mb-1">Kategori</label>
-                  <select className="w-full border rounded-lg p-3" value={newRecipe.category} onChange={e => setNewRecipe({...newRecipe, category: e.target.value})}>
-                    <option value="Keto">Keto</option>
-                    <option value="Gluten Free">Gluten Free</option>
-                    <option value="Low Carb">Low Carb</option>
-                    <option value="High Fiber">High Fiber</option>
+                  <label className="label-text">Kategori</label>
+                  <select name="category" value={newRecipe.category} onChange={handleUploadChange} className="input-field bg-white">
+                    {dietCategories.map(c => <option key={c} value={c}>{c}</option>)}
                   </select>
                 </div>
+              </div>
 
-                <div><label className="block text-sm font-medium mb-1">Kalori</label><input type="number" className="w-full border rounded-lg p-3" value={newRecipe.calories} onChange={e => setNewRecipe({...newRecipe, calories: e.target.value})} /></div>
-                <div><label className="block text-sm font-medium mb-1">URL Gambar</label><input type="text" className="w-full border rounded-lg p-3" value={newRecipe.image} onChange={e => setNewRecipe({...newRecipe, image: e.target.value})} /></div>
+              <div><label className="label-text">URL Gambar</label><input type="text" name="image" required value={newRecipe.image} onChange={handleUploadChange} className="input-field" placeholder="https://..." /></div>
+
+              <div>
+                <label className="label-text">Tags (Cara Buat)</label>
+                <div className="flex flex-wrap gap-2">
+                  {methodCategories.map(tag => (
+                    <button type="button" key={tag} onClick={() => handleTagChange(tag)} className={`px-3 py-1 rounded-full text-xs font-bold transition-all ${newRecipe.tags.includes(tag) ? 'bg-[#A02E2E] text-white' : 'bg-gray-100 text-gray-500'}`}>{tag}</button>
+                  ))}
+                </div>
               </div>
-              <div><label className="block text-sm font-medium mb-1">Deskripsi</label><textarea className="w-full border rounded-lg p-3" value={newRecipe.desc} onChange={e => setNewRecipe({...newRecipe, desc: e.target.value})} required></textarea></div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div><label className="block text-sm font-medium mb-1">Bahan (Baris baru untuk item baru)</label><textarea rows="5" className="w-full border rounded-lg p-3" value={newRecipe.ingredients} onChange={e => setNewRecipe({...newRecipe, ingredients: e.target.value})}></textarea></div>
-                <div><label className="block text-sm font-medium mb-1">Cara Membuat (Baris baru untuk langkah baru)</label><textarea rows="5" className="w-full border rounded-lg p-3" value={newRecipe.instructions} onChange={e => setNewRecipe({...newRecipe, instructions: e.target.value})}></textarea></div>
+
+              <div className="grid grid-cols-2 gap-6">
+                <div><label className="label-text">Kalori</label><input type="number" name="calories" value={newRecipe.calories} onChange={handleUploadChange} className="input-field" placeholder="100" /></div>
+                <div><label className="label-text">Porsi</label><input type="text" name="servings" value={newRecipe.servings} onChange={handleUploadChange} className="input-field" placeholder="1 Porsi" /></div>
               </div>
-              <div className="flex justify-end gap-4"><button type="button" onClick={() => setActiveTab('recipes')} className="px-6 py-2 border rounded-lg">Batal</button><button type="submit" className="px-6 py-2 bg-[#960C14] text-white rounded-lg">Publikasikan</button></div>
+
+              <div><label className="label-text">Deskripsi</label><textarea name="desc" value={newRecipe.desc} onChange={handleUploadChange} className="input-field h-20 resize-none" placeholder="Ceritakan sedikit..."></textarea></div>
+
+              {/* Dynamic Ingredients */}
+              <div>
+                <label className="label-text">Bahan-bahan</label>
+                {newRecipe.ingredients.map((ing, idx) => (
+                  <div key={idx} className="flex gap-2 mb-2">
+                    <input type="text" value={ing} onChange={(e) => handleArrayChange(idx, e.target.value, 'ingredients')} className="input-field py-2" placeholder={`Bahan ${idx + 1}`} />
+                    {newRecipe.ingredients.length > 1 && <button type="button" onClick={() => removeArrayItem(idx, 'ingredients')} className="text-red-400 font-bold px-2">✕</button>}
+                  </div>
+                ))}
+                <button type="button" onClick={() => addArrayItem('ingredients')} className="text-xs font-bold text-[#A02E2E] hover:underline">+ Tambah Bahan</button>
+              </div>
+
+              {/* Dynamic Instructions */}
+              <div>
+                <label className="label-text">Instruksi</label>
+                {newRecipe.instructions.map((ins, idx) => (
+                  <div key={idx} className="flex gap-2 mb-2">
+                    <span className="py-2 text-gray-400 font-bold text-xs">{idx + 1}.</span>
+                    <input type="text" value={ins} onChange={(e) => handleArrayChange(idx, e.target.value, 'instructions')} className="input-field py-2" placeholder={`Langkah ${idx + 1}`} />
+                    {newRecipe.instructions.length > 1 && <button type="button" onClick={() => removeArrayItem(idx, 'instructions')} className="text-red-400 font-bold px-2">✕</button>}
+                  </div>
+                ))}
+                <button type="button" onClick={() => addArrayItem('instructions')} className="text-xs font-bold text-[#A02E2E] hover:underline">+ Tambah Langkah</button>
+              </div>
+
+              <div className="flex justify-end gap-4 pt-4 border-t border-gray-100">
+                <button type="button" onClick={() => setActiveTab('recipes')} className="px-6 py-2 border rounded-xl font-bold text-gray-500 hover:bg-gray-50">Batal</button>
+                <button type="submit" className="px-8 py-3 bg-[#A02E2E] text-white font-bold rounded-xl shadow-lg hover:bg-red-800 transition-all">Publikasikan</button>
+              </div>
             </form>
           </div>
         )}
@@ -318,7 +382,7 @@ const Admin = () => {
         )}
       </main>
 
-      {/* --- MODAL DETAIL / PREVIEW --- */}
+      {/* --- MODAL DETAIL / PREVIEW (Tetap popup untuk view detail) --- */}
       {selectedRecipe && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto relative">
@@ -382,6 +446,9 @@ const Admin = () => {
           </div>
         </div>
       )}
+
+      {/* STYLE CSS KHUSUS ADMIN (SAMA DENGAN PROFILE) */}
+      <style>{` .input-field { width: 100%; padding: 12px; border-radius: 12px; border: 1px solid #FFDADA; outline: none; transition: all; font-size: 14px; background: #fff; } .input-field:focus { border-color: #A02E2E; ring: 2px solid #FFE4E4; } .label-text { display: block; font-size: 10px; font-weight: 800; color: #A02E2E; text-transform: uppercase; margin-bottom: 6px; letter-spacing: 0.05em; } `}</style>
     </div>
   );
 };
@@ -403,7 +470,6 @@ const RecipeTable = ({ data, onView, handleApprove, handleReject, handleDelete, 
               <td className="px-6 py-4 text-center flex justify-center gap-2">
                 <button onClick={() => onView(recipe)} className="p-2 bg-blue-50 text-blue-600 rounded hover:bg-blue-100" title="Lihat Detail"><Icons.Eye /></button>
                 {recipe.status === 'pending' && (<><button onClick={() => handleApprove(recipe.id, recipe.title)} className="p-2 bg-green-50 text-green-600 rounded hover:bg-green-100"><Icons.Check /></button><button onClick={() => handleReject(recipe.id, recipe.title)} className="p-2 bg-yellow-50 text-yellow-600 rounded hover:bg-yellow-100"><Icons.X /></button></>)}
-                {/* Hapus tombol delete jika status bukan pending, agar admin tidak salah hapus, atau biarkan jika ingin admin bisa hapus kapan saja */}
                 {recipe.status !== 'pending' && <button onClick={() => handleDelete(recipe.id)} className="p-2 bg-gray-50 text-gray-400 rounded hover:text-red-500"><Icons.Trash /></button>}
               </td>
             </tr>
