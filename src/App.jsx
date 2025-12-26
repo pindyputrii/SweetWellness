@@ -11,7 +11,7 @@ function App() {
       <main className="pt-20">
         <Outlet />
       </main>
-      <SeedRecipes />
+      {/* <SeedRecipes /> */}
       <Footer />
     </div>
   );
