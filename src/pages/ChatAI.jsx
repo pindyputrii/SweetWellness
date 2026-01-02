@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+// Import SDK Gemini dihapus karena pindah ke server
 import { db, auth } from "../firebase";
 import { doc, getDoc, collection, getDocs } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
@@ -22,9 +22,7 @@ const ChatAI = () => {
   
   const messagesEndRef = useRef(null);
 
-  // --- API & DATA FETCHING (LOGIC SAMA, UI BEDA) ---
-  const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY);
-  const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
+  // Inisialisasi model di sini dihapus agar API Key tidak bocor di Network tab
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -75,22 +73,37 @@ const ChatAI = () => {
         TUGAS:
         Jawab pertanyaan user: "${input}".
         Rekomendasikan resep dari database di atas yang cocok dengan profil user. Jelaskan kenapa cocok.
-        Gunakan format bullet points dan emoji agar menarik.
+        Gunakann format bullet points dan emoji agar menarik.
       `;
 
-      const result = await model.generateContent(prompt);
-      const response = await result.response;
-      const text = response.text();
+      // MEMANGGIL API INTERNAL (PROSES AMAN)
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ prompt }),
+      });
 
-      setMessages((prev) => [...prev, { role: "model", text }]);
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Gagal mendapatkan respon dari AI");
+      }
+
+      setMessages((prev) => [...prev, { role: "model", text: data.text }]);
     } catch (error) {
-      setMessages((prev) => [...prev, { role: "model", text: "Maaf, koneksi terputus. Coba lagi ya! 😥" }]);
+      console.error("Error Detail:", error);
+      setMessages((prev) => [
+        ...prev, 
+        { role: "model", text: "Maaf, koneksi ke server AI terputus. Coba lagi ya! 😥" }
+      ]);
     } finally {
       setLoading(false);
     }
   };
 
-  // Formatter Text (Bold & Newline)
+  // Formatter Text (Tetap sama)
   const formatMessage = (text) => {
     return text.split("\n").map((line, i) => (
       <span key={i} className="block min-h-[1.2em]">
@@ -106,9 +119,8 @@ const ChatAI = () => {
   };
 
   return (
-    <div className="flex flex-col h-screen bg-[#FFF5F5] font-sans pt-16"> {/* pt-16 untuk kompensasi Navbar Fixed */}
-      
-      {/* 1. HEADER CHAT (FIXED) */}
+    <div className="flex flex-col h-screen bg-[#FFF5F5] font-sans pt-16">
+      {/* UI tetap sama seperti kode asli kamu */}
       <div className="fixed top-0 w-full mt-12 bg-white shadow-sm px-6 py-4 flex items-center gap-4 z-20 border-b border-pink-100">
         <div className="relative">
           <div className="w-12 h-12 rounded-full bg-gradient-to-tr from-[#960C14] to-[#E27E75] flex items-center justify-center text-white text-2xl shadow-md">
@@ -131,9 +143,7 @@ const ChatAI = () => {
         </div>
       </div>
 
-      {/* 2. CHAT AREA (SCROLLABLE) */}
       <div className="flex-1 overflow-y-auto px-4 py-0 space-y-3 scroll-smooth custom-scrollbar">
-        {/* Intro Date */}
         <div className="text-center text-xs text-gray-400 my-4">Hari Ini</div>
 
         {messages.map((msg, index) => (
@@ -149,7 +159,6 @@ const ChatAI = () => {
               }`}
             >
               {formatMessage(msg.text)}
-              {/* Timestamp Dummy */}
               <div className={`text-[10px] mt-2 text-right ${msg.role === 'user' ? 'text-white/60' : 'text-gray-400'}`}>
                 {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
               </div>
@@ -157,7 +166,6 @@ const ChatAI = () => {
           </div>
         ))}
 
-        {/* Loading Indicator (Typing...) */}
         {loading && (
           <div className="flex justify-start w-full">
             <div className="bg-white px-4 py-3 rounded-2xl rounded-bl-none shadow-sm border border-gray-100 flex items-center gap-1.5">
@@ -170,7 +178,6 @@ const ChatAI = () => {
         <div ref={messagesEndRef} className="h-4" />
       </div>
 
-      {/* 3. INPUT AREA (STICKY BOTTOM) */}
       <div className="p-4 bg-white border-t border-gray-100">
         <form
           onSubmit={handleSend}
