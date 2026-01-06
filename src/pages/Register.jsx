@@ -1,17 +1,20 @@
 import React, { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useLocation } from "react-router-dom";
 import { auth, db } from "../firebase"; 
-import { createUserWithEmailAndPassword, updateProfile } from "firebase/auth"; // Tambahkan updateProfile
+import { createUserWithEmailAndPassword, updateProfile } from "firebase/auth";
 import { doc, setDoc } from "firebase/firestore";
 
 const Register = () => {
   const navigate = useNavigate();
+  const location = useLocation(); 
   const [loading, setLoading] = useState(false);
 
-  // 1. Tambahkan 'fullName' ke dalam state
+  // Ambil data kiriman dari Google Login melalui Login.jsx (jika ada)
+  const googleData = location.state || null;
+
   const [formData, setFormData] = useState({
-    fullName: "", // Kolom Nama baru
-    email: "",
+    fullName: googleData?.fullName || "", // Auto-isi nama jika dari Google
+    email: googleData?.email || "",       // Auto-isi email jika dari Google
     password: "",
     gender: "",
     dob: "",
@@ -37,23 +40,28 @@ const Register = () => {
     setLoading(true);
 
     try {
-      // Langkah A: Buat akun di Firebase Authentication
-      const userCredential = await createUserWithEmailAndPassword(
-        auth,
-        formData.email,
-        formData.password
-      );
-      const user = userCredential.user;
+      // LOGIKA UTAMA: Gunakan UID dari Google jika ada, jika tidak buat baru
+      let uid = googleData?.uid;
 
-      // Langkah B: (Opsional tapi disarankan) Update nama di Firebase Auth
-      await updateProfile(user, {
-        displayName: formData.fullName
-      });
+      if (!uid) {
+        // Proses pendaftaran manual
+        const userCredential = await createUserWithEmailAndPassword(
+          auth,
+          formData.email,
+          formData.password
+        );
+        const user = userCredential.user;
+        uid = user.uid;
 
-      // Langkah C: Simpan seluruh data ke Firestore
-      await setDoc(doc(db, "users", user.uid), {
-        uid: user.uid,
-        fullName: formData.fullName, // Simpan Nama Lengkap
+        await updateProfile(user, {
+          displayName: formData.fullName
+        });
+      }
+
+      // Simpan data lengkap ke Firestore menggunakan UID yang sudah didapat
+      await setDoc(doc(db, "users", uid), {
+        uid: uid,
+        fullName: formData.fullName,
         email: formData.email,
         gender: formData.gender,
         dob: formData.dob,
@@ -65,9 +73,10 @@ const Register = () => {
         allergy: formData.allergy,
         diet: formData.diet,
         createdAt: new Date().toISOString(),
+        authMethod: googleData ? "google" : "email",
       });
 
-      alert(`Halo ${formData.fullName}, akun SweetWellness berhasil dibuat!`);
+      alert(`Halo ${formData.fullName}, akun SweetWellness berhasil dilengkapi!`);
       navigate("/"); 
     } catch (error) {
       console.error("Registrasi Gagal:", error.message);
@@ -82,11 +91,11 @@ const Register = () => {
       <div className="w-full max-w-4xl p-8 md:p-12 bg-[#FFD0CE] rounded-3xl shadow-2xl relative">
         
         <div className="text-center mb-8">
-          <div className="text-4xl mx-auto mb-2">
-            <img src="/img/logo.png" alt="SweetWellness Icon" className="w-12 h-12 mx-auto" />
-          </div>
+          <img src="/img/logo.png" alt="SweetWellness Icon" className="w-12 h-12 mx-auto mb-2" />
           <h1 className="text-xl font-extrabold text-[#960C14]">SWEETWELLNESS</h1>
-          <p className="text-sm text-gray-700 mt-1">Dessert Manis, Lebih Sehat, Tanpa Rasa Bersalah.</p>
+          <p className="text-sm text-gray-700 mt-1">
+            {googleData ? "Sedikit lagi! Lengkapi data profil Anda." : "Dessert Manis, Lebih Sehat, Tanpa Rasa Bersalah."}
+          </p>
         </div>
 
         <form className="space-y-10" onSubmit={handleRegister}>
@@ -96,40 +105,50 @@ const Register = () => {
             <div className="space-y-6">
               <h3 className="text-xl font-bold text-gray-800 border-b pb-2">Informasi Dasar</h3>
               
-              {/* INPUT NAMA LENGKAP */}
               <div className="relative">
-                <input name="fullName" type="text" placeholder="Nama Lengkap" required onChange={handleChange}
+                <input name="fullName" type="text" placeholder="Nama Lengkap" required 
+                  defaultValue={formData.fullName}
+                  onChange={handleChange}
                   className="w-full bg-[#F7F1E7] text-gray-700 py-3 pl-12 pr-4 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#960C14]" />
-                <span className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-500">👤</span>
+                <span className="absolute left-4 top-1/2 transform -translate-y-1/2">👤</span>
               </div>
 
               <div className="relative">
-                <input name="email" type="email" placeholder="nama@email.com" required onChange={handleChange}
-                  className="w-full bg-[#F7F1E7] text-gray-700 py-3 pl-12 pr-4 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#960C14]" />
-                <span className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-500">📧</span>
+                <input name="email" type="email" placeholder="nama@email.com" required 
+                  value={formData.email}
+                  readOnly={!!googleData} 
+                  onChange={handleChange}
+                  className={`w-full py-3 pl-12 pr-4 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#960C14] ${googleData ? "bg-gray-200 text-gray-500 cursor-not-allowed" : "bg-[#F7F1E7] text-gray-700"}`} />
+                <span className="absolute left-4 top-1/2 transform -translate-y-1/2">📧</span>
               </div>
 
-              <div className="relative">
-                <input name="password" type="password" placeholder="Minimal 8 karakter" required onChange={handleChange}
-                  className="w-full bg-[#F7F1E7] text-gray-700 py-3 pl-12 pr-4 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#960C14]" />
-                <span className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-500">🔒</span>
-              </div>
+              {!googleData && (
+                <div className="relative">
+                  <input name="password" type="password" placeholder="Minimal 8 karakter" required onChange={handleChange}
+                    className="w-full bg-[#F7F1E7] text-gray-700 py-3 pl-12 pr-4 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#960C14]" />
+                  <span className="absolute left-4 top-1/2 transform -translate-y-1/2">🔒</span>
+                </div>
+              )}
               
               <div className="flex space-x-6 pt-2 text-gray-700">
                 <label className="flex items-center space-x-2 cursor-pointer">
-                  <input type="radio" name="gender" value="Laki-Laki" onChange={handleChange} className="form-radio text-[#960C14]" />
+                  <input type="radio" name="gender" value="Laki-Laki" required onChange={handleChange} className="form-radio text-[#960C14]" />
                   <span>Laki-Laki</span>
                 </label>
                 <label className="flex items-center space-x-2 cursor-pointer">
-                  <input type="radio" name="gender" value="Perempuan" onChange={handleChange} className="form-radio text-[#960C14]" />
+                  <input type="radio" name="gender" value="Perempuan" required onChange={handleChange} className="form-radio text-[#960C14]" />
                   <span>Perempuan</span>
                 </label>
               </div>
 
-              <div className="relative">
-                <input name="dob" type="date" required onChange={handleChange}
-                  className="w-full bg-[#F7F1E7] text-gray-700 py-3 pl-12 pr-4 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#960C14]" />
-                <span className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-500">📅</span>
+              {/* SECTION TANGGAL LAHIR (Sudah Dilengkapi Label) */}
+              <div className="space-y-2">
+                <label htmlFor="dob" className="block text-sm font-semibold text-gray-700 ml-1">Tanggal Lahir</label>
+                <div className="relative">
+                  <input id="dob" name="dob" type="date" required onChange={handleChange}
+                    className="w-full bg-[#F7F1E7] text-gray-700 py-3 pl-12 pr-4 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#960C14]" />
+                  <span className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-500">📅</span>
+                </div>
               </div>
             </div>
 
@@ -139,95 +158,63 @@ const Register = () => {
               
               <div className="flex space-x-4">
                 <div className="relative w-1/2">
-                  <input name="height" type="number" placeholder="170" onChange={handleChange}
+                  <input name="height" type="number" placeholder="Tinggi (cm)" required onChange={handleChange}
                     className="w-full bg-[#F7F1E7] text-gray-700 py-3 pl-12 pr-4 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#960C14]" />
-                  <span className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-500">📏</span>
-                  <span className="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-500 text-sm">cm</span>
+                  <span className="absolute left-4 top-1/2 transform -translate-y-1/2">📏</span>
                 </div>
                 <div className="relative w-1/2">
-                  <input name="weight" type="number" placeholder="50" onChange={handleChange}
+                  <input name="weight" type="number" placeholder="Berat (kg)" required onChange={handleChange}
                     className="w-full bg-[#F7F1E7] text-gray-700 py-3 pl-12 pr-4 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#960C14]" />
-                  <span className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-500">🏋️</span>
-                  <span className="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-500 text-sm">kg</span>
+                  <span className="absolute left-4 top-1/2 transform -translate-y-1/2">🏋️</span>
                 </div>
               </div>
 
-              <div className="relative">
-                <select name="activityLevel" onChange={handleChange} className="w-full bg-[#F7F1E7] text-gray-700 py-3 px-4 rounded-xl appearance-none focus:outline-none focus:ring-2 focus:ring-[#960C14]">
-                  <option value="">Pilih Tingkat Aktivitas</option>
-                  <option value="Ringan">Ringan</option>
-                  <option value="Sedang">Sedang</option>
-                  <option value="Berat">Berat</option>
-                </select>
-              </div>
+              <select name="activityLevel" required onChange={handleChange} className="w-full bg-[#F7F1E7] text-gray-700 py-3 px-4 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#960C14]">
+                <option value="">Pilih Tingkat Aktivitas</option>
+                <option value="Ringan">Ringan (Jarang olahraga)</option>
+                <option value="Sedang">Sedang (Olahraga 3x seminggu)</option>
+                <option value="Berat">Berat (Atlet/Pekerja Fisik)</option>
+              </select>
 
-              <div className="relative">
-                <select name="goal" onChange={handleChange} className="w-full bg-[#F7F1E7] text-gray-700 py-3 px-4 rounded-xl appearance-none focus:outline-none focus:ring-2 focus:ring-[#960C14]">
-                  <option value="">Pilih Tujuan Anda</option>
-                  <option value="Menjaga Berat Badan">Menjaga Berat Badan</option>
-                  <option value="Menurunkan Berat Badan">Menurunkan Berat Badan</option>
-                  <option value="Menambah Berat Badan">Menambah Berat Badan</option>
-                </select>
-              </div>
+              <select name="goal" required onChange={handleChange} className="w-full bg-[#F7F1E7] text-gray-700 py-3 px-4 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#960C14]">
+                <option value="">Pilih Tujuan Anda</option>
+                <option value="Menjaga Berat Badan">Menjaga Berat Badan</option>
+                <option value="Menurunkan Berat Badan">Menurunkan Berat Badan</option>
+                <option value="Menambah Berat Badan">Menambah Berat Badan</option>
+              </select>
             </div>
           </div>
           
-          {/* --- BAGIAN 2: PREFERENSI DESSERT --- */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-x-12 gap-y-6 pt-4">
-            <div className="space-y-4">
-              <h3 className="text-xl font-bold text-gray-800 border-b pb-2">Preferensi Dessert</h3> 
-              <div className="space-y-3 text-gray-700">
-                {["Cookies", "Ice Cream", "Dessert Buah", "Cake & Puding"].map((item) => (
-                  <label key={item} className="flex items-center space-x-2 cursor-pointer">
-                    <input type="radio" name="favDessert" value={item} onChange={handleChange} className="form-radio text-[#960C14]" />
-                    <span>{item}</span>
-                  </label>
-                ))}
-              </div>
-            </div>
-
-            <div className="space-y-4">
-              <h3 className="text-xl font-bold text-gray-800 border-b pb-2">Alergi</h3>
-              <div className="space-y-3 text-gray-700">
-                {["Tidak ada", "Kacang-kacangan", "Susu/Dairy", "Gluten", "Telur"].map((item) => (
-                  <label key={item} className="flex items-center space-x-2 cursor-pointer">
-                    <input type="radio" name="allergy" value={item} onChange={handleChange} className="form-radio text-[#960C14]" />
-                    <span>{item}</span>
-                  </label>
-                ))}
-              </div>
-            </div>
-
-            <div className="space-y-4">
-              <h3 className="text-xl font-bold text-gray-800 border-b pb-2">Pola Makan</h3>
-              <div className="space-y-3 text-gray-700">
-                {["Normal", "Vegetarian", "Vegan"].map((item) => (
-                  <label key={item} className="flex items-center space-x-2 cursor-pointer">
-                    <input type="radio" name="diet" value={item} onChange={handleChange} className="form-radio text-[#960C14]" />
-                    <span>{item}</span>
-                  </label>
-                ))}
-              </div>
-            </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-x-12 gap-y-6 pt-4 border-t border-red-200">
+            <PreferenceSection title="Preferensi Dessert" name="favDessert" items={["Cookies", "Ice Cream", "Dessert Buah", "Cake & Puding"]} onChange={handleChange} />
+            <PreferenceSection title="Alergi" name="allergy" items={["Tidak ada", "Kacang-kacangan", "Susu/Dairy", "Gluten", "Telur"]} onChange={handleChange} />
+            <PreferenceSection title="Pola Makan" name="diet" items={["Normal", "Vegetarian", "Vegan"]} onChange={handleChange} />
           </div>
 
           <div className="text-center pt-8">
             <button type="submit" disabled={loading}
-              className="bg-[#960C14] text-white font-bold py-3 px-12 rounded-xl hover:bg-[#8B1E1E] transition duration-150 shadow-md mb-4 disabled:bg-gray-400">
-              {loading ? "Memproses..." : "Mulai Perjalanan Sehat!"}
+              className="bg-[#960C14] text-white font-bold py-3 px-12 rounded-xl hover:bg-[#8B1E1E] transition duration-150 shadow-md disabled:bg-gray-400">
+              {loading ? "Memproses..." : googleData ? "Selesaikan Profil" : "Mulai Perjalanan Sehat!"}
             </button>
-            <p className="text-gray-700">
-              Sudah punya akun? <Link to="/login" className="font-bold text-[#960C14] hover:underline ml-1">Masuk di sini</Link>
-            </p>
           </div>
         </form>
-
-        <div className="absolute bottom-4 left-4">
-          <Link to="/" className="text-3xl font-bold text-gray-700 hover:text-[#960C14]">&larr;</Link>
-        </div>
       </div>
     </div>
   );
 };
+
+const PreferenceSection = ({ title, name, items, onChange }) => (
+  <div className="space-y-4">
+    <h3 className="text-xl font-bold text-gray-800 border-b pb-2">{title}</h3> 
+    <div className="space-y-3 text-gray-700">
+      {items.map((item) => (
+        <label key={item} className="flex items-center space-x-2 cursor-pointer">
+          <input type="radio" name={name} value={item} required onChange={onChange} className="form-radio text-[#960C14]" />
+          <span>{item}</span>
+        </label>
+      ))}
+    </div>
+  </div>
+);
 
 export default Register;

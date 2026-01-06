@@ -1,7 +1,6 @@
-// src/firebase.js
 import { initializeApp } from "firebase/app";
-import { getFirestore } from "firebase/firestore"; // Untuk Database
-import { getAuth } from "firebase/auth";           // Untuk Login
+import { getFirestore } from "firebase/firestore";
+import { getAuth, GoogleAuthProvider } from "firebase/auth";
 
 const firebaseConfig = {
   apiKey: "AIzaSyA3L0hGY47c9FPYYvAFJ0mp-lh9V66jH4Y",
@@ -13,10 +12,8 @@ const firebaseConfig = {
   measurementId: "G-FV98W9HBBH"
 };
 
-
-// Inisialisasi Firebase
 const app = initializeApp(firebaseConfig);
-
-// Ekspor instance untuk digunakan di komponen lain
 export const db = getFirestore(app);
 export const auth = getAuth(app);
+export const googleProvider = new GoogleAuthProvider();
+googleProvider.setCustomParameters({ prompt: "select_account" });
